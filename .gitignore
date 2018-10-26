@@ -2,6 +2,7 @@
 bilm.egg-info/
 dist/
 build/
+scripts/
 
 exp/
 

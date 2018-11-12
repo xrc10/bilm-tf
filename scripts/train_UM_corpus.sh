@@ -20,7 +20,7 @@ echo "Training on GPU $CUDA_VISIBLE_DEVICES"
 #     --n-train-tokens 45060031;
 
 # covert to hdf5
-LANG=en;
+LANG=zh;
 python bin/dump_weights.py \
     --save_dir exp/"$LANG" \
     --outfile exp/"$LANG"/weights.hdf5

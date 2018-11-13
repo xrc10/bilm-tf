@@ -6,6 +6,17 @@ import numpy as np
 from bilm.training import train, load_options_latest_checkpoint, load_vocab
 from bilm.data import BidirectionalLMDataset
 
+def count_tokens(fname):
+    '''
+    counts the tokens given the file name
+    '''
+    num_words = 0
+
+    with open(fname, 'r') as f:
+        for line in f:
+            words = line.split()
+            num_words += len(words)
+    return num_words
 
 def main(args):
     # load the vocab
@@ -16,7 +27,10 @@ def main(args):
     n_gpus = 1
 
     # number of tokens in training data (this for 1B Word Benchmark)
-    n_train_tokens = args.n_train_tokens
+    # n_train_tokens = args.n_train_tokens
+    print('Counting tokens in {}'.format(args.train_prefix))
+    n_train_tokens = count_tokens(args.train_prefix)
+    print('Total tokens {}'.format(n_train_tokens))
 
     options = {
      'bidirectional': True,

@@ -133,7 +133,7 @@ class LanguageModel(object):
         batch_size = self.options['batch_size']
         unroll_steps = self.options['unroll_steps']
         projection_dim = self.options['lstm']['projection_dim']
-    
+
         cnn_options = self.options['char_cnn']
         filters = cnn_options['filters']
         n_filters = sum(f[1] for f in filters)
@@ -149,7 +149,7 @@ class LanguageModel(object):
         elif cnn_options['activation'] == 'relu':
             activation = tf.nn.relu
 
-        # the input character ids 
+        # the input character ids
         self.tokens_characters = tf.placeholder(DTYPE_INT,
                                    shape=(batch_size, unroll_steps, max_chars),
                                    name='tokens_characters')
@@ -295,7 +295,7 @@ class LanguageModel(object):
                                              W_carry, b_carry,
                                              W_transform, b_transform)
                 self.token_embedding_layers.append(
-                    tf.reshape(embedding, 
+                    tf.reshape(embedding,
                         [batch_size, unroll_steps, highway_dim])
                 )
 
@@ -566,7 +566,7 @@ def average_gradients(tower_grads, batch_size, options):
             for g, v in grad_and_vars:
                 # Add 0 dimension to the gradients to represent the tower.
                 expanded_g = tf.expand_dims(g, 0)
-                # Append on a 'tower' dimension which we will average over 
+                # Append on a 'tower' dimension which we will average over
                 grads.append(expanded_g)
 
             # Average over the 'tower' dimension.
@@ -582,7 +582,7 @@ def average_gradients(tower_grads, batch_size, options):
         average_grads.append(grad_and_var)
 
     assert len(average_grads) == len(list(zip(*tower_grads)))
-    
+
     return average_grads
 
 
@@ -674,12 +674,14 @@ def _get_feed_dict_from_X(X, start, end, model, char_inputs, bidirectional):
 
 def train(options, data, n_gpus, tf_save_dir, tf_log_dir,
           restart_ckpt_file=None):
+    '''training wrapper'''
 
     # not restarting so save the options
     if restart_ckpt_file is None:
         with open(os.path.join(tf_save_dir, 'options.json'), 'w') as fout:
             fout.write(json.dumps(options))
 
+    # the definition of everything on CPU
     with tf.device('/cpu:0'):
         global_step = tf.get_variable(
             'global_step', [],
@@ -770,7 +772,7 @@ def train(options, data, n_gpus, tf_save_dir, tf_log_dir,
         if restart_ckpt_file is not None:
             loader = tf.train.Saver()
             loader.restore(sess, restart_ckpt_file)
-            
+
         summary_writer = tf.summary.FileWriter(tf_log_dir, sess.graph)
 
         # For each batch:
@@ -871,12 +873,12 @@ def train(options, data, n_gpus, tf_save_dir, tf_log_dir,
             else:
                 # also run the histogram summaries
                 ret = sess.run(
-                    [train_op, summary_op, train_perplexity, hist_summary_op] + 
+                    [train_op, summary_op, train_perplexity, hist_summary_op] +
                                                 final_state_tensors,
                     feed_dict=feed_dict
                 )
                 init_state_values = ret[4:]
-                
+
 
             if batch_no % 1250 == 0:
                 summary_writer.add_summary(ret[3], batch_no)
@@ -909,7 +911,7 @@ def clip_by_global_norm_summary(t_list, clip_norm, norm_name, variables):
         name = 'norm_pre_clip/' + v.name.replace(":", "_")
         summary_ops.append(tf.summary.scalar(name, ns))
 
-    # clip 
+    # clip
     clipped_t_list, tf_norm = tf.clip_by_global_norm(t_list, clip_norm)
 
     # summary ops after clipping
@@ -990,7 +992,7 @@ def test(options, ckpt_file, data, batch_size=256):
                 feed_dict.update({
                     model.token_ids_reverse:
                         np.zeros([batch_size, unroll_steps], dtype=np.int64)
-                })  
+                })
         else:
             feed_dict = {
                 model.tokens_characters:
@@ -1020,7 +1022,7 @@ def test(options, ckpt_file, data, batch_size=256):
                                         init_state_tensors, init_state_values)}
 
             feed_dict.update(
-                _get_feed_dict_from_X(X, 0, X['token_ids'].shape[0], model, 
+                _get_feed_dict_from_X(X, 0, X['token_ids'].shape[0], model,
                                           char_inputs, bidirectional)
             )
 
@@ -1105,4 +1107,3 @@ def dump_weights(tf_save_dir, outfile):
                 dset = fout.create_dataset(outname, shape, dtype='float32')
                 values = sess.run([v])[0]
                 dset[...] = values
-

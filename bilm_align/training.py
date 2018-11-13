@@ -688,12 +688,14 @@ def _get_feed_dict_from_X(X, start, end, model, char_inputs, bidirectional):
 
 def train(options, data, n_gpus, tf_save_dir, tf_log_dir,
           restart_ckpt_file=None):
+    '''training wrapper'''
 
     # not restarting so save the options
     if restart_ckpt_file is None:
         with open(os.path.join(tf_save_dir, 'options.json'), 'w') as fout:
             fout.write(json.dumps(options))
 
+    # the definition of everything on CPU
     with tf.device('/cpu:0'):
         global_step = tf.get_variable(
             'global_step', [],

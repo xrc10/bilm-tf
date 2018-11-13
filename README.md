@@ -26,6 +26,7 @@ Install python version 3.5 or later, tensorflow version 1.2 and h5py:
 
 ```
 conda create -n py36-tf1.2 python=3.6 anaconda
+source activate py36-tf1.2
 pip install tensorflow-gpu==1.2 h5py
 python setup.py install
 ```

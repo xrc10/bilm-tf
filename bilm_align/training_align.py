@@ -886,11 +886,14 @@ def train(options, src_data, trg_data, n_gpus, tf_save_dir, tf_log_dir,
         init_state_values = sess.run(init_state_tensors, feed_dict=feed_dict)
 
         t1 = time.time()
-        data_gen = data.iter_batches(batch_size * n_gpus, unroll_steps)
-        for batch_no, batch in enumerate(data_gen, start=1):
+        src_data_gen = src_data.iter_batches(batch_size * n_gpus, unroll_steps)
+        trg_data_gen = trg_data.iter_batches(batch_size * n_gpus, unroll_steps)
+        data_gen = zip(src_data_gen, trg_data_gen)
+        for batch_no, (src_batch, trg_batch) in enumerate(data_gen, start=1):
 
             # slice the input in the batch for the feed_dict
-            X = batch
+            X = src_batch
+            Y = trg_batch
             feed_dict = {t: v for t, v in zip(
                                         init_state_tensors, init_state_values)}
             for k in range(n_gpus):
@@ -899,7 +902,7 @@ def train(options, src_data, trg_data, n_gpus, tf_save_dir, tf_log_dir,
                 end = (k + 1) * batch_size
 
                 feed_dict.update(
-                    _get_feed_dict_from_X(X, start, end, model,
+                    _get_feed_dict_from_X(X, Y, start, end, model,
                                           char_inputs, bidirectional)
                 )
 

@@ -188,13 +188,13 @@ class LanguageModel(object):
 
         # the input character ids
         self.tokens_characters = (
-                                tf.placeholder(DTYPE_INT,
-                                   shape=(batch_size, unroll_steps, max_chars),
-                                   name='tokens_characters'),
-                                tf.placeholder(DTYPE_INT,
-                                   shape=(batch_size, unroll_steps, max_chars),
-                                   name='tokens_characters')
-                                   )
+            tf.placeholder(DTYPE_INT,
+               shape=(batch_size, unroll_steps, max_chars),
+               name='tokens_characters'),
+            tf.placeholder(DTYPE_INT,
+               shape=(batch_size, unroll_steps, max_chars),
+               name='tokens_characters')
+           )
         # the character embeddings
         with tf.device("/cpu:0"):
             self.embedding_weights = tf.get_variable(
@@ -218,7 +218,7 @@ class LanguageModel(object):
                     tf.placeholder(DTYPE_INT,
                            shape=(batch_size, unroll_steps, max_chars),
                            name='tokens_characters_reverse')
-                                   )
+                   )
                 self.char_embedding_reverse = (
                     tf.nn.embedding_lookup(self.embedding_weights,
                         self.tokens_characters_reverse[0]),
@@ -276,14 +276,19 @@ class LanguageModel(object):
 
         # for first model, this is False, for others it's True
         reuse = tf.get_variable_scope().reuse
-        embedding = make_convolutions(self.char_embedding, reuse)
+        embedding = (
+                make_convolutions(self.char_embedding[0], reuse),
+                make_convolutions(self.char_embedding[1], reuse)
+            )
 
         self.token_embedding_layers = [embedding]
 
         if self.bidirectional:
             # re-use the CNN weights from forward pass
-            embedding_reverse = make_convolutions(
-                self.char_embedding_reverse, True)
+            embedding_reverse = (
+                    make_convolutions(self.char_embedding_reverse[0], True),
+                    make_convolutions(self.char_embedding_reverse[1], True)
+                )
 
         # for highway and projection layers:
         #   reshape from (batch_size, n_tokens, dim) to
@@ -292,10 +297,15 @@ class LanguageModel(object):
         use_proj = n_filters != projection_dim
 
         if use_highway or use_proj:
-            embedding = tf.reshape(embedding, [-1, n_filters])
+            embedding = (
+                    tf.reshape(embedding[0], [-1, n_filters]),
+                    tf.reshape(embedding[1], [-1, n_filters])
+                )
             if self.bidirectional:
-                embedding_reverse = tf.reshape(embedding_reverse,
-                    [-1, n_filters])
+                embedding_reverse = (
+                        tf.reshape(embedding_reverse[0], [-1, n_filters]),
+                        tf.reshape(embedding_reverse[1], [-1, n_filters])
+                    )
 
         # set up weights for projection
         if use_proj:
@@ -342,34 +352,58 @@ class LanguageModel(object):
                         initializer=tf.constant_initializer(0.0),
                         dtype=DTYPE)
 
-                embedding = high(embedding, W_carry, b_carry,
-                                 W_transform, b_transform)
+                embedding = (
+                        high(embedding[0], W_carry, b_carry,
+                            W_transform, b_transform),
+                        high(embedding[1], W_carry, b_carry,
+                            W_transform, b_transform)
+                    )
                 if self.bidirectional:
-                    embedding_reverse = high(embedding_reverse,
-                                             W_carry, b_carry,
-                                             W_transform, b_transform)
+                    embedding_reverse = (
+                        high(embedding_reverse[0], W_carry, b_carry,
+                                W_transform, b_transform),
+                        high(embedding_reverse[1], W_carry, b_carry,
+                                W_transform, b_transform)
+                    )
                 self.token_embedding_layers.append(
-                    tf.reshape(embedding,
-                        [batch_size, unroll_steps, highway_dim])
+                    (
+                        tf.reshape(embedding[0],
+                            [batch_size, unroll_steps, highway_dim]),
+                        tf.reshape(embedding[1],
+                            [batch_size, unroll_steps, highway_dim]),
+                    )
                 )
 
         # finally project down to projection dim if needed
         if use_proj:
-            embedding = tf.matmul(embedding, W_proj_cnn) + b_proj_cnn
+            embedding = (
+                tf.matmul(embedding[0], W_proj_cnn) + b_proj_cnn,
+                tf.matmul(embedding[1], W_proj_cnn) + b_proj_cnn
+            )
             if self.bidirectional:
-                embedding_reverse = tf.matmul(embedding_reverse, W_proj_cnn) \
-                    + b_proj_cnn
+                embedding_reverse = (
+                    tf.matmul(embedding_reverse[0], W_proj_cnn) + b_proj_cnn,
+                    tf.matmul(embedding_reverse[1], W_proj_cnn) + b_proj_cnn
+                )
             self.token_embedding_layers.append(
-                tf.reshape(embedding,
+                (tf.reshape(embedding[0],
+                        [batch_size, unroll_steps, projection_dim]),
+                 tf.reshape(embedding[1],
                         [batch_size, unroll_steps, projection_dim])
+                )
             )
 
         # reshape back to (batch_size, tokens, dim)
         if use_highway or use_proj:
             shp = [batch_size, unroll_steps, projection_dim]
-            embedding = tf.reshape(embedding, shp)
+            embedding = (
+                tf.reshape(embedding[0], shp), tf.reshape(embedding[1], shp)
+                )
             if self.bidirectional:
-                embedding_reverse = tf.reshape(embedding_reverse, shp)
+                embedding_reverse = (
+                    tf.reshape(embedding_reverse[0], shp),
+                    tf.reshape(embedding_reverse[1], shp)
+                    )
 
         # at last assign attributes for remainder of the model
         self.embedding = embedding

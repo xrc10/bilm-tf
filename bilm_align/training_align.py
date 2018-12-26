@@ -91,31 +91,50 @@ class LanguageModel(object):
         projection_dim = self.options['lstm']['projection_dim']
 
         # the input token_ids and word embeddings
-        self.token_ids = tf.placeholder(DTYPE_INT,
+        self.token_ids = (
+                            tf.placeholder(DTYPE_INT,
                                shape=(batch_size, unroll_steps),
-                               name='token_ids')
+                               name='token_ids'),
+                            tf.placeholder(DTYPE_INT,
+                               shape=(batch_size, unroll_steps),
+                               name='token_ids'),
+                           )
         # the word embeddings
         with tf.device("/cpu:0"):
             self.embedding_weights = tf.get_variable(
                 "embedding", [n_tokens_vocab, projection_dim],
                 dtype=DTYPE,
             )
-            self.embedding = tf.nn.embedding_lookup(self.embedding_weights,
-                                                self.token_ids)
+            self.embedding = (
+                                tf.nn.embedding_lookup(self.embedding_weights,
+                                                self.token_ids[0]),
+                                tf.nn.embedding_lookup(self.embedding_weights,
+                                                self.token_ids[1])
+                                )
 
         # if a bidirectional LM then make placeholders for reverse
         # model and embeddings
         if self.bidirectional:
-            self.token_ids_reverse = tf.placeholder(DTYPE_INT,
+            self.token_ids_reverse = (
+                            tf.placeholder(DTYPE_INT,
                                shape=(batch_size, unroll_steps),
-                               name='token_ids_reverse')
+                               name='token_ids_reverse'),
+                            tf.placeholder(DTYPE_INT,
+                              shape=(batch_size, unroll_steps),
+                              name='token_ids_reverse'),
+                              )
             with tf.device("/cpu:0"):
-                self.embedding_reverse = tf.nn.embedding_lookup(
-                    self.embedding_weights, self.token_ids_reverse)
+                self.embedding_reverse = (
+                    tf.nn.embedding_lookup(
+                        self.embedding_weights, self.token_ids_reverse[0]),
+                    tf.nn.embedding_lookup(
+                        self.embedding_weights, self.token_ids_reverse[1])
+                        )
 
         if PRINT_SHAPE:
-            print("embedding.shape", self.embedding.get_shape())
-            print("embedding_reverse.shape", self.embedding_reverse.get_shape())
+            print("embedding.shape", self.embedding[0].get_shape())
+            print("embedding_reverse.shape",
+                self.embedding_reverse[0].get_shape())
 
     def _build_word_char_embeddings(self):
         '''
@@ -168,9 +187,14 @@ class LanguageModel(object):
             activation = tf.nn.relu
 
         # the input character ids
-        self.tokens_characters = tf.placeholder(DTYPE_INT,
+        self.tokens_characters = (
+                                tf.placeholder(DTYPE_INT,
+                                   shape=(batch_size, unroll_steps, max_chars),
+                                   name='tokens_characters'),
+                                tf.placeholder(DTYPE_INT,
                                    shape=(batch_size, unroll_steps, max_chars),
                                    name='tokens_characters')
+                                   )
         # the character embeddings
         with tf.device("/cpu:0"):
             self.embedding_weights = tf.get_variable(
@@ -179,16 +203,28 @@ class LanguageModel(object):
                     initializer=tf.random_uniform_initializer(-1.0, 1.0)
             )
             # shape (batch_size, unroll_steps, max_chars, embed_dim)
-            self.char_embedding = tf.nn.embedding_lookup(self.embedding_weights,
-                                                    self.tokens_characters)
+            self.char_embedding = (
+                tf.nn.embedding_lookup(self.embedding_weights,
+                                    self.tokens_characters[0]),
+                tf.nn.embedding_lookup(self.embedding_weights,
+                                    self.tokens_characters[1])
+                                    )
 
             if self.bidirectional:
-                self.tokens_characters_reverse = tf.placeholder(DTYPE_INT,
-                                   shape=(batch_size, unroll_steps, max_chars),
-                                   name='tokens_characters_reverse')
-                self.char_embedding_reverse = tf.nn.embedding_lookup(
-                    self.embedding_weights, self.tokens_characters_reverse)
-
+                self.tokens_characters_reverse = (
+                    tf.placeholder(DTYPE_INT,
+                           shape=(batch_size, unroll_steps, max_chars),
+                           name='tokens_characters_reverse'),
+                    tf.placeholder(DTYPE_INT,
+                           shape=(batch_size, unroll_steps, max_chars),
+                           name='tokens_characters_reverse')
+                                   )
+                self.char_embedding_reverse = (
+                    tf.nn.embedding_lookup(self.embedding_weights,
+                        self.tokens_characters_reverse[0]),
+                    tf.nn.embedding_lookup(self.embedding_weights,
+                        self.tokens_characters_reverse[1])
+                    )
 
         # the convolutions
         def make_convolutions(inp, reuse):

@@ -3,6 +3,7 @@ Train and test bidirectional language models.
 '''
 
 import os
+import sys
 import time
 import json
 import re
@@ -11,12 +12,15 @@ import tensorflow as tf
 import numpy as np
 
 from tensorflow.python.ops.init_ops import glorot_uniform_initializer
+# from tf.nn.rnn_cell import MultiRNNCell
+from bilm_align.my_rnn import MultiRNNCell
 
 from .data import Vocabulary, UnicodeCharsVocabulary, InvalidNumberOfCharacters
 
 
 DTYPE = 'float32'
 DTYPE_INT = 'int64'
+PRINT_SHAPE = True
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -70,6 +74,7 @@ class LanguageModel(object):
         self.sample_softmax = options.get('sample_softmax', True)
 
         self._build()
+        sys.exit()
 
     def _build_word_embeddings(self):
         '''
@@ -107,6 +112,10 @@ class LanguageModel(object):
             with tf.device("/cpu:0"):
                 self.embedding_reverse = tf.nn.embedding_lookup(
                     self.embedding_weights, self.token_ids_reverse)
+
+        if PRINT_SHAPE:
+            print("embedding.shape", self.embedding.get_shape())
+            print("embedding_reverse.shape", self.embedding_reverse.get_shape())
 
     def _build_word_char_embeddings(self):
         '''
@@ -375,9 +384,15 @@ class LanguageModel(object):
         if use_skip_connections:
             print("USING SKIP CONNECTIONS")
 
-        lstm_outputs = []
+        lstm_outputs = [] # the top-level lstm outputs
+        self.lstm_outputs = ([], [])    # the lstm outputs at every level
+                                        # self.lstm_outputs[0] for forward
+                                        # self.lstm_outputs[1] for backward
+
+        # iterate two directions
         for lstm_num, lstm_input in enumerate(lstm_inputs):
             lstm_cells = []
+            # iterate layers
             for i in range(n_lstm_layers):
                 if projection_dim < lstm_dim:
                     # are projecting down output
@@ -406,8 +421,9 @@ class LanguageModel(object):
 
                 lstm_cells.append(lstm_cell)
 
+
             if n_lstm_layers > 1:
-                lstm_cell = tf.nn.rnn_cell.MultiRNNCell(lstm_cells)
+                lstm_cell = MultiRNNCell(lstm_cells)
             else:
                 lstm_cell = lstm_cells[0]
 
@@ -427,18 +443,38 @@ class LanguageModel(object):
                         lstm_cell,
                         tf.unstack(lstm_input, axis=1),
                         initial_state=self.init_lstm_state[-1])
+
                 self.final_lstm_state.append(final_state)
 
-            # (batch_size * unroll_steps, 512)
+            self.lstm_outputs[lstm_num] = _lstm_output_unpacked
+
+            if PRINT_SHAPE:
+                print("lstm_num", lstm_num)
+                print("len(_lstm_output_unpacked)", len(_lstm_output_unpacked))
+                for tmp_i in range(len(_lstm_output_unpacked)):
+                    print('i', tmp_i)
+                    print("len(_lstm_output_unpacked[tmp_i])", len(_lstm_output_unpacked[tmp_i]))
+                    for tmp_j, tmp_elm in enumerate(_lstm_output_unpacked[tmp_i]):
+                        print('j', tmp_j)
+                        print("_lstm_output_unpacked.shape", tmp_elm.get_shape())
+                        break
+                    break
+
+            # get the top-level outputs of lstm: unroll_steps * [(batch_size, projection_dim)]
+            _lstm_top_output_unpacked = [t[-1] for t in _lstm_output_unpacked]
+
+            # lstm_output_flat: (batch_size * unroll_steps, 512)
             lstm_output_flat = tf.reshape(
-                tf.stack(_lstm_output_unpacked, axis=1), [-1, projection_dim])
+                tf.stack(_lstm_top_output_unpacked, axis=1), [-1, projection_dim])
             if self.is_training:
                 # add dropout to output
                 lstm_output_flat = tf.nn.dropout(lstm_output_flat,
                     keep_prob)
             tf.add_to_collection('lstm_output_embeddings',
-                _lstm_output_unpacked)
+                _lstm_top_output_unpacked)
 
+            if PRINT_SHAPE:
+                print("lstm_output_flat.shape", lstm_output_flat.get_shape())
             lstm_outputs.append(lstm_output_flat)
 
         self._build_loss(lstm_outputs)

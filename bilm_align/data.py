@@ -12,7 +12,7 @@ class Vocabulary(object):
     A token vocabulary.  Holds a map from token to ids and provides
     a method for encoding text to a sequence of ids.
     '''
-    def __init__(self, filename, validate_file=False):
+    def __init__(self, filename, prefix_n=0, validate_file=False):
         '''
         filename = the vocabulary file.  It is a flat text file with one
             (normalized) token per line.  In addition, the file should also
@@ -25,7 +25,8 @@ class Vocabulary(object):
         self._eos = -1
 
         with open(filename) as f:
-            idx = 0
+            # idx = 0
+            idx = prefix_n
             for line in f:
                 word_name = line.strip()
                 if word_name == '<S>':
@@ -113,8 +114,8 @@ class UnicodeCharsVocabulary(Vocabulary):
     then be sure to add the +1 appropriately, otherwise embeddings computed
     from the pre-trained model will be useless.
     """
-    def __init__(self, filename, max_word_length, **kwargs):
-        super(UnicodeCharsVocabulary, self).__init__(filename, **kwargs)
+    def __init__(self, filename, max_word_length, prefix_n, **kwargs):
+        super(UnicodeCharsVocabulary, self).__init__(filename, prefix_n, **kwargs)
         self._max_word_length = max_word_length
 
         # char ids 0-255 come from utf-8 encoding bytes
@@ -191,7 +192,7 @@ class UnicodeCharsVocabulary(Vocabulary):
 
 
 class Batcher(object):
-    ''' 
+    '''
     Batch sentences of tokenized text into character id matrices.
     '''
     def __init__(self, lm_vocab_file: str, max_token_length: int):
@@ -230,7 +231,7 @@ class Batcher(object):
 
 
 class TokenBatcher(object):
-    ''' 
+    '''
     Batch sentences of tokenized text into token id matrices.
     '''
     def __init__(self, lm_vocab_file: str):
@@ -307,6 +308,9 @@ def _get_batch(generator, batch_size, num_steps, max_word_length):
             # for the incomplete batch
             break
 
+        # inputs: np:int32 [batch_size, num_steps]
+        # char_inputs: np:int32 [batch_size, num_steps, max_word_length]
+        # targets: np:int32 [batch_size, num_steps]
         X = {'token_ids': inputs, 'tokens_characters': char_inputs,
                  'next_token_id': targets}
 
@@ -462,4 +466,3 @@ class BidirectionalLMDataset(object):
 
 class InvalidNumberOfCharacters(Exception):
     pass
-

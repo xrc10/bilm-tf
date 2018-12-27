@@ -34,10 +34,12 @@ echo "Training on GPU $CUDA_VISIBLE_DEVICES"
 
 # train the cross-lingual
 EXP_PATH=exp/"$RUN_NAME"/en-zh/;
-python scripts/train_align.py \
+mkdir -p "$EXP_PATH"
+
+python train_align.py \
         --save_dir "$EXP_PATH" \
         --src_vocab_file "$RAW_DATA_PATH"/dict.bilm.en.txt \
         --trg_vocab_file "$RAW_DATA_PATH"/dict.bilm.zh.txt \
-        --src_train_prefix "$RAW_DATA_PATH"/en.sent.txt \
-        --trg_train_prefix "$RAW_DATA_PATH"/zh.sent.txt \
-        &> "$EXP_PATH"/run.log.txt &
+        --src_train_prefix "$RAW_DATA_PATH"/en.sent.txt"$TRAIN_SUFFIX" \
+        --trg_train_prefix "$RAW_DATA_PATH"/zh.sent.txt"$TRAIN_SUFFIX" \
+        | tee "$EXP_PATH"/run.log.txt;

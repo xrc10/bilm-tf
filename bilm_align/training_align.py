@@ -20,7 +20,7 @@ from .data import Vocabulary, UnicodeCharsVocabulary, InvalidNumberOfCharacters
 
 DTYPE = 'float32'
 DTYPE_INT = 'int64'
-PRINT_SHAPE = True
+PRINT_SHAPE = False
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -535,7 +535,7 @@ class LanguageModel(object):
                 for i in range(n_lstm_layers):
                     # get the i-th layer outputs of lstm: unroll_steps *
                     # [(batch_size, projection_dim)]
-                    _i_layer_output_unpacked = \\
+                    _i_layer_output_unpacked = \
                         [t[i] for t in _lstm_output_unpacked]
 
                     # lstm_output_flat: (batch_size * unroll_steps, 512)
@@ -582,7 +582,7 @@ class LanguageModel(object):
             return id_placeholder
 
         # get the window and weight placeholders
-        self.next_token_id[i] = (
+        self.next_token_id = (
             _get_next_token_placeholders('source'),
             _get_next_token_placeholders('target')
             )
@@ -629,7 +629,7 @@ class LanguageModel(object):
         # log-likelihoood loss
         for k in [0, 1]: # iterate over source and target
             top_lstm_outpus = lstm_outputs[k][-1]
-            for next_ids_tuple, lstm_output_flat in \\
+            for next_ids_tuple, lstm_output_flat in \
                 zip(next_ids, top_lstm_outpus): # iterate over forw/rev
 
                 # flatten the LSTM output and next token id gold to shape:
@@ -1205,7 +1205,7 @@ def load_options_latest_checkpoint(tf_save_dir):
 
 def load_vocab(vocab_file, max_word_length=None, prefix_n=0):
     if max_word_length:
-        return UnicodeCharsVocabulary(vocab_file, max_word_length, prefix_n
+        return UnicodeCharsVocabulary(vocab_file, max_word_length, prefix_n,
                                       validate_file=True)
     else:
         return Vocabulary(vocab_file, prefix_n, validate_file=True)

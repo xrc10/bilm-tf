@@ -23,6 +23,7 @@ class Vocabulary(object):
         self._unk = -1
         self._bos = -1
         self._eos = -1
+        self.prefix = prefix_n
 
         with open(filename) as f:
             # idx = 0
@@ -70,7 +71,7 @@ class Vocabulary(object):
         return self.unk
 
     def id_to_word(self, cur_id):
-        return self._id_to_word[cur_id]
+        return self._id_to_word[cur_id-self.prefix_n]
 
     def decode(self, cur_ids):
         """Convert a list of ids to a sentence, with space inserted."""
@@ -171,7 +172,7 @@ class UnicodeCharsVocabulary(Vocabulary):
 
     def word_to_char_ids(self, word):
         if word in self._word_to_id:
-            return self._word_char_ids[self._word_to_id[word]]
+            return self._word_char_ids[self._word_to_id[word]-self.prefix]
         else:
             return self._convert_word_to_char_ids(word)
 

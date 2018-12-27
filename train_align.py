@@ -20,8 +20,8 @@ def count_tokens(fname):
 
 def main(args):
     # load the vocab
-    src_vocab = load_vocab(args.src_vocab_file, 50)
-    trg_vocab = load_vocab(args.trg_vocab_file, 50, prefix_n=src_vocab.size)
+    src_vocab = load_vocab(args.src_vocab_file, None)
+    trg_vocab = load_vocab(args.trg_vocab_file, None, prefix_n=src_vocab.size)
 
     # define the options
     batch_size = 64  # batch size for each GPU

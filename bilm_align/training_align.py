@@ -454,13 +454,15 @@ class LanguageModel(object):
         if use_skip_connections:
             print("USING SKIP CONNECTIONS")
 
-        lstm_outputs = [] # the top-level lstm outputs
-        self.lstm_outputs = ([], [])    # the lstm outputs at every level
-                                        # self.lstm_outputs[0] for forward
-                                        # self.lstm_outputs[1] for backward
+        lstm_top_outputs = ([],[]) # the top-level lstm outputs
+        lstm_outputs = ([], [])    # the lstm outputs at every level
+                                        # self.lstm_outputs[0] for source
+                                        # self.lstm_outputs[1] for target
 
         # iterate two directions
         for lstm_num, lstm_input in enumerate(lstm_inputs):
+            # lstm_input[0]: source input
+            # lstm_input[1]: target input
             lstm_cells = []
             # iterate layers
             for i in range(n_lstm_layers):
@@ -497,57 +499,52 @@ class LanguageModel(object):
             else:
                 lstm_cell = lstm_cells[0]
 
-            with tf.control_dependencies([lstm_input]):
-                self.init_lstm_state.append(
-                    lstm_cell.zero_state(batch_size, DTYPE))
-                # NOTE: this variable scope is for backward compatibility
-                # with existing models...
-                if self.bidirectional:
-                    with tf.variable_scope('RNN_%s' % lstm_num):
+            for k in [0, 1]: # iterate among source and target
+
+                with tf.control_dependencies([lstm_input[k]]):
+                    self.init_lstm_state.append(
+                        lstm_cell.zero_state(batch_size, DTYPE))
+                    # NOTE: this variable scope is for backward and
+                    # source/target compatibility with existing models...
+                    with tf.variable_scope('RNN_%s_%s' % (k, lstm_num)):
                         _lstm_output_unpacked, final_state = tf.nn.static_rnn(
                             lstm_cell,
-                            tf.unstack(lstm_input, axis=1),
+                            tf.unstack(lstm_input[k], axis=1),
                             initial_state=self.init_lstm_state[-1])
-                else:
-                    _lstm_output_unpacked, final_state = tf.nn.static_rnn(
-                        lstm_cell,
-                        tf.unstack(lstm_input, axis=1),
-                        initial_state=self.init_lstm_state[-1])
 
-                self.final_lstm_state.append(final_state)
+                    self.final_lstm_state.append(final_state)
+                self.lstm_outputs[lstm_num] = _lstm_output_unpacked
 
-            self.lstm_outputs[lstm_num] = _lstm_output_unpacked
-
-            if PRINT_SHAPE:
-                print("lstm_num", lstm_num)
-                print("len(_lstm_output_unpacked)", len(_lstm_output_unpacked))
-                for tmp_i in range(len(_lstm_output_unpacked)):
-                    print('i', tmp_i)
-                    print("len(_lstm_output_unpacked[tmp_i])", len(_lstm_output_unpacked[tmp_i]))
-                    for tmp_j, tmp_elm in enumerate(_lstm_output_unpacked[tmp_i]):
-                        print('j', tmp_j)
-                        print("_lstm_output_unpacked.shape", tmp_elm.get_shape())
+                if PRINT_SHAPE:
+                    print("lstm_num", lstm_num)
+                    print("len(_lstm_output_unpacked)", len(_lstm_output_unpacked))
+                    for tmp_i in range(len(_lstm_output_unpacked)):
+                        print('i', tmp_i)
+                        print("len(_lstm_output_unpacked[tmp_i])", len(_lstm_output_unpacked[tmp_i]))
+                        for tmp_j, tmp_elm in enumerate(_lstm_output_unpacked[tmp_i]):
+                            print('j', tmp_j)
+                            print("_lstm_output_unpacked.shape", tmp_elm.get_shape())
+                            break
                         break
-                    break
 
-            # get the top-level outputs of lstm: unroll_steps * [(batch_size, projection_dim)]
-            _lstm_top_output_unpacked = [t[-1] for t in _lstm_output_unpacked]
+                # get the top-level outputs of lstm: unroll_steps * [(batch_size, projection_dim)]
+                _lstm_top_output_unpacked = [t[-1] for t in _lstm_output_unpacked]
 
-            # lstm_output_flat: (batch_size * unroll_steps, 512)
-            lstm_output_flat = tf.reshape(
-                tf.stack(_lstm_top_output_unpacked, axis=1), [-1, projection_dim])
-            if self.is_training:
-                # add dropout to output
-                lstm_output_flat = tf.nn.dropout(lstm_output_flat,
-                    keep_prob)
-            tf.add_to_collection('lstm_output_embeddings',
-                _lstm_top_output_unpacked)
+                # lstm_output_flat: (batch_size * unroll_steps, 512)
+                lstm_output_flat = tf.reshape(
+                    tf.stack(_lstm_top_output_unpacked, axis=1), [-1, projection_dim])
+                if self.is_training:
+                    # add dropout to output
+                    lstm_output_flat = tf.nn.dropout(lstm_output_flat,
+                        keep_prob)
+                tf.add_to_collection('lstm_output_embeddings',
+                    _lstm_top_output_unpacked)
 
-            if PRINT_SHAPE:
-                print("lstm_output_flat.shape", lstm_output_flat.get_shape())
-            lstm_outputs.append(lstm_output_flat)
+                if PRINT_SHAPE:
+                    print("lstm_output_flat.shape", lstm_output_flat.get_shape())
+                lstm_top_outputs[k].append(lstm_output_flat)
 
-        self._build_loss(lstm_outputs)
+        self._build_loss(lstm_outputs, lstm_top_outputs)
 
     def _build_loss(self, lstm_outputs):
         '''

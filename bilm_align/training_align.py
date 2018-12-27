@@ -454,10 +454,12 @@ class LanguageModel(object):
         if use_skip_connections:
             print("USING SKIP CONNECTIONS")
 
-        lstm_top_outputs = ([],[]) # the top-level lstm outputs
-        lstm_outputs = ([], [])    # the lstm outputs at every level
-                                        # self.lstm_outputs[0] for source
-                                        # self.lstm_outputs[1] for target
+        # lstm_top_outputs = ([],[]) # the top-level lstm outputs
+        lstm_outputs = (
+                [[] for i in range(n_lstm_layers)],
+                [[] for i in range(n_lstm_layers)])
+        # the lstm outputs at every level lstm_outputs[0] for source
+                                         #lstm_outputs[1] for target
 
         # iterate two directions
         for lstm_num, lstm_input in enumerate(lstm_inputs):
@@ -466,6 +468,7 @@ class LanguageModel(object):
             lstm_cells = []
             # iterate layers
             for i in range(n_lstm_layers):
+                # define LSTM
                 if projection_dim < lstm_dim:
                     # are projecting down output
                     lstm_cell = tf.nn.rnn_cell.LSTMCell(
@@ -513,41 +516,52 @@ class LanguageModel(object):
                             initial_state=self.init_lstm_state[-1])
 
                     self.final_lstm_state.append(final_state)
-                self.lstm_outputs[lstm_num] = _lstm_output_unpacked
 
                 if PRINT_SHAPE:
                     print("lstm_num", lstm_num)
-                    print("len(_lstm_output_unpacked)", len(_lstm_output_unpacked))
+                    print("len(_lstm_output_unpacked)",
+                        len(_lstm_output_unpacked))
                     for tmp_i in range(len(_lstm_output_unpacked)):
                         print('i', tmp_i)
                         print("len(_lstm_output_unpacked[tmp_i])", len(_lstm_output_unpacked[tmp_i]))
-                        for tmp_j, tmp_elm in enumerate(_lstm_output_unpacked[tmp_i]):
+                        for tmp_j, tmp_elm in enumerate(
+                            _lstm_output_unpacked[tmp_i]):
                             print('j', tmp_j)
-                            print("_lstm_output_unpacked.shape", tmp_elm.get_shape())
+                            print("_lstm_output_unpacked.shape",
+                                tmp_elm.get_shape())
                             break
                         break
 
-                # get the top-level outputs of lstm: unroll_steps * [(batch_size, projection_dim)]
-                _lstm_top_output_unpacked = [t[-1] for t in _lstm_output_unpacked]
+                for i in range(n_lstm_layers):
+                    # get the i-th layer outputs of lstm: unroll_steps *
+                    # [(batch_size, projection_dim)]
+                    _i_layer_output_unpacked = \\
+                        [t[i] for t in _lstm_output_unpacked]
 
-                # lstm_output_flat: (batch_size * unroll_steps, 512)
-                lstm_output_flat = tf.reshape(
-                    tf.stack(_lstm_top_output_unpacked, axis=1), [-1, projection_dim])
-                if self.is_training:
-                    # add dropout to output
-                    lstm_output_flat = tf.nn.dropout(lstm_output_flat,
-                        keep_prob)
-                tf.add_to_collection('lstm_output_embeddings',
-                    _lstm_top_output_unpacked)
+                    # lstm_output_flat: (batch_size * unroll_steps, 512)
+                    lstm_output_flat = tf.reshape(
+                        tf.stack(_i_layer_output_unpacked, axis=1),
+                        [-1, projection_dim])
+                    if self.is_training:
+                        # add dropout to output
+                        lstm_output_flat = tf.nn.dropout(lstm_output_flat,
+                            keep_prob)
+                    tf.add_to_collection('lstm_output_embeddings',
+                        _i_layer_output_unpacked)
 
-                if PRINT_SHAPE:
-                    print("lstm_output_flat.shape", lstm_output_flat.get_shape())
-                lstm_top_outputs[k].append(lstm_output_flat)
+                    if PRINT_SHAPE:
+                        print("lstm_output_flat.shape",
+                            lstm_output_flat.get_shape())
+                    lstm_outputs[k][i].append(lstm_output_flat)
 
-        self._build_loss(lstm_outputs, lstm_top_outputs)
+        self._build_loss(lstm_outputs)
 
     def _build_loss(self, lstm_outputs):
         '''
+        lstm_outputs:
+            lstm_outputs[0]: source outputs
+            lstm_outputs[1]: target outputs
+
         Create:
             self.total_loss: total loss op for training
             self.softmax_W, softmax_b: the softmax variables
@@ -568,10 +582,15 @@ class LanguageModel(object):
             return id_placeholder
 
         # get the window and weight placeholders
-        self.next_token_id = _get_next_token_placeholders('')
+        self.next_token_id[i] = (
+            _get_next_token_placeholders('source'),
+            _get_next_token_placeholders('target')
+            )
         if self.bidirectional:
-            self.next_token_id_reverse = _get_next_token_placeholders(
-                '_reverse')
+            self.next_token_id_reverse = (
+                _get_next_token_placeholders('source_reverse'),
+                _get_next_token_placeholders('target_reverse'),
+                )
 
         # DEFINE THE SOFTMAX VARIABLES
         # get the dimension of the softmax weights
@@ -607,43 +626,51 @@ class LanguageModel(object):
         else:
             next_ids = [self.next_token_id]
 
-        for id_placeholder, lstm_output_flat in zip(next_ids, lstm_outputs):
-            # flatten the LSTM output and next token id gold to shape:
-            # (batch_size * unroll_steps, softmax_dim)
-            # Flatten and reshape the token_id placeholders
-            next_token_id_flat = tf.reshape(id_placeholder, [-1, 1])
+        # log-likelihoood loss
+        for k in [0, 1]: # iterate over source and target
+            top_lstm_outpus = lstm_outputs[k][-1]
+            for next_ids_tuple, lstm_output_flat in \\
+                zip(next_ids, top_lstm_outpus): # iterate over forw/rev
 
-            with tf.control_dependencies([lstm_output_flat]):
-                if self.is_training and self.sample_softmax:
-                    losses = tf.nn.sampled_softmax_loss(
-                                   self.softmax_W, self.softmax_b,
-                                   next_token_id_flat, lstm_output_flat,
-                                   self.options['n_negative_samples_batch'],
-                                   self.options['n_tokens_vocab'],
-                                   num_true=1)
+                # flatten the LSTM output and next token id gold to shape:
+                # (batch_size * unroll_steps, softmax_dim)
+                # Flatten and reshape the token_id placeholders
+                id_placeholder = next_ids_tuple[k]
+                next_token_id_flat = tf.reshape(id_placeholder, [-1, 1])
 
-                else:
-                    # get the full softmax loss
-                    output_scores = tf.matmul(
-                        lstm_output_flat,
-                        tf.transpose(self.softmax_W)
-                    ) + self.softmax_b
-                    # NOTE: tf.nn.sparse_softmax_cross_entropy_with_logits
-                    #   expects unnormalized output since it performs the
-                    #   softmax internally
-                    losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                        logits=output_scores,
-                        labels=tf.squeeze(next_token_id_flat, squeeze_dims=[1])
-                    )
+                with tf.control_dependencies([lstm_output_flat]):
+                    if self.is_training and self.sample_softmax:
+                        losses = tf.nn.sampled_softmax_loss(
+                                       self.softmax_W, self.softmax_b,
+                                       next_token_id_flat, lstm_output_flat,
+                                       self.options['n_negative_samples_batch'],
+                                       self.options['n_tokens_vocab'],
+                                       num_true=1)
 
-            self.individual_losses.append(tf.reduce_mean(losses))
+                    else:
+                        # get the full softmax loss
+                        output_scores = tf.matmul(
+                            lstm_output_flat,
+                            tf.transpose(self.softmax_W)
+                        ) + self.softmax_b
+                        # NOTE: tf.nn.sparse_softmax_cross_entropy_with_logits
+                        #   expects unnormalized output since it performs the
+                        #   softmax internally
+                        losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
+                            logits=output_scores,
+                            labels=tf.squeeze(next_token_id_flat, squeeze_dims=[1])
+                        )
+
+                self.individual_losses.append(tf.reduce_mean(losses))
 
         # now make the total loss -- it's the mean of the individual losses
         if self.bidirectional:
-            self.total_loss = 0.5 * (self.individual_losses[0]
-                                    + self.individual_losses[1])
+            self.total_loss = 0.25 * (self.individual_losses[0]
+                + self.individual_losses[1] + self.individual_losses[2]
+                + self.individual_losses[3])
         else:
-            self.total_loss = self.individual_losses[0]
+            self.total_loss = 0.5 * (self.individual_losses[0]
+                + self.individual_losses[1])
 
 
 def average_gradients(tower_grads, batch_size, options):

@@ -550,6 +550,9 @@ class LanguageModel(object):
                     lstm_outputs[k][i].append(lstm_output_flat)
 
         self._build_loss(lstm_outputs)
+        self._build_align_loss(lstm_outputs)
+
+        self.total_loss = 
 
     def _build_loss(self, lstm_outputs):
         '''
@@ -660,11 +663,11 @@ class LanguageModel(object):
 
         # now make the total loss -- it's the mean of the individual losses
         if self.bidirectional:
-            self.total_loss = 0.25 * (self.individual_losses[0]
+            self.lm_loss = 0.25 * (self.individual_losses[0]
                 + self.individual_losses[1] + self.individual_losses[2]
                 + self.individual_losses[3])
         else:
-            self.total_loss = 0.5 * (self.individual_losses[0]
+            self.lm_loss = 0.5 * (self.individual_losses[0]
                 + self.individual_losses[1])
 
     def _build_align_loss(self, lstm_outputs):
@@ -679,7 +682,8 @@ class LanguageModel(object):
             for src, trg in zip(lstm_outputs[0][i], lstm_outputs[1][i]):
                 # build loss for src and trg:
                 # (batch_size * unroll_steps, projection_dim)
-
+                dist = euclidean_distance_matrix(src, trg)
+                loss = get_sinkhorn_distance(dist)
                 align_losses.append(loss)
 
-        return  tf.add_n(align_losses)/len(align_losses)
+        self.align_loss = tf.add_n(align_losses)/len(align_losses)
